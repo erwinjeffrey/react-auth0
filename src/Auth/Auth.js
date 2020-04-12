@@ -2,6 +2,14 @@ import auth0 from 'auth0-js';
 
 const REDIRECT_ON_LOGIN = 'redirect_on_login';
 
+// Stored outside class since private
+
+// eslint-disable-next-line
+let _idToken = null;
+let _accessToken = null;
+let _scopes = null;
+let _expireAt = null;
+
 class Auth {
     constructor(history){
         this.history = history;
@@ -43,29 +51,20 @@ class Auth {
         console.log(authResult);
 
         //set the time that the access token will expire
-        const expireAt = JSON.stringify(
-            authResult.expiresIn * 1000 + new Date().getTime()
-        );
+         _expireAt = authResult.expiresIn * 1000 + new Date().getTime()
+         _scopes = authResult.scope || this.requestedScopes || "";
 
-        const scopes = authResult.scope || this.requestedScopes || "";
+        _accessToken = authResult.accessToken;
+        _idToken = authResult.idToken;
 
-        localStorage.setItem('access_token', authResult.accessToken);
-        localStorage.setItem('id_token', authResult.idToken);
-        localStorage.setItem('expires_at', expireAt);
-        localStorage.setItem('scopes', JSON.stringify(scopes));
+        this.scheduleTokenRenewal();
+       
     }
 
-    isAuthenticated = () => {
-        const expireAt = JSON.parse(localStorage.getItem('expires_at'));
-        return new Date().getTime() < expireAt;
-    }
+    isAuthenticated = () => new Date().getTime() < _expireAt;
+    
 
     logout = () => {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('id_token');
-        localStorage.removeItem('expires_at');
-        localStorage.removeItem('scopes');
-        this.userProfile = null;
         this.auth0.logout({
             clientID: process.env.REACT_APP_AUTH0_CLIENT_ID,
             returnTo: "http://localhost:3000/"
@@ -73,9 +72,8 @@ class Auth {
     }
 
     getAccessToken = () => {
-        const accessToken = localStorage.getItem("access_token");
-        if(!accessToken) throw new Error("No access token found.");
-        return accessToken;
+        if(!_accessToken) throw new Error("No access token found.");
+        return _accessToken;
     }
     getProfile = (cb) => {
         if(this.userProfile) return cb(this.userProfile);
@@ -86,10 +84,26 @@ class Auth {
     }
 
     userHasScopes = (scopes)=>{
-        const grantedScopes = (
-            JSON.parse(localStorage.getItem('scopes')) || ""
-        ).split(' ');
+        const grantedScopes = ( _scopes || "" ).split(' ');
         return scopes.every(scope => grantedScopes.includes(scope));
+    }
+
+    renewTocken = (cb) => {
+        this.auth0.checkSession({}, (err, result) => {
+            if(err){
+                console.log(`Error: ${err.error} - ${err.error_description}`);
+            }else{
+                this.setSession(result);
+            }
+            if(cb){
+                cb(err, result);
+            }
+        });
+    }
+
+    scheduleTokenRenewal = () => {
+        const delay = _expireAt - Date.now();
+        if(delay > 0) setTimeout(() => this.renewTocken(), delay)
     }
 }
 

@@ -26,7 +26,7 @@ class Courses extends Component{
             throw new Error('Network response was not ok.');
         })
         .then(response => console.log(response))
-        .catch(error => this.setState({ courses: error.courses }));
+        .catch(error => console.log(error));
     }
 
     render(){
